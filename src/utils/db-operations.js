@@ -1,6 +1,7 @@
 import { getDb } from './db.js';
 import { conversations, messages, conversationParticipants, users } from './schema.js';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { sql, eq, and, ne, desc } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/mysql-core'; // Or /postgres-core, etc.
 
 // User operations
 export const getUserById = async (userId) => {
@@ -14,37 +15,84 @@ export const getUserById = async (userId) => {
 };
 
 // Conversation operations
+// export const getUserConversations = async (userId) => {
+//   const db = await getDb();
+//   const cp_all = alias(conversationParticipants, 'cp_all');
+//   const userConvs = await db
+//     .select({
+//       id: conversations.id,
+//       isGroupChat: conversations.isGroupChat,
+//       name: conversations.name,
+//       createdAt: conversations.createdAt,
+//       participants: sql`array_agg(${cp_all.userId})`,
+//       latestMessage: messages.content,
+//       latestMessageTime: messages.createdAt
+//     })
+//     .from(conversations)
+//     .innerJoin(conversationParticipants, and(eq(conversationParticipants.conversationId, conversations.id), eq(conversationParticipants.userId, userId)))
+//     .leftJoin(cp_all, eq(cp_all.conversationId, conversations.id))
+//     .leftJoin(messages, and(
+//       eq(messages.conversationId, conversations.id),
+//       eq(messages.id, db.select({ maxId: sql`MAX(${messages.id})` }).from(messages).where(eq(messages.conversationId, conversations.id)))
+//     ))
+//     .groupBy(conversations.id, conversations.isGroupChat, conversations.name, conversations.createdAt, messages.content, messages.createdAt)
+//     .orderBy(desc(conversations.createdAt));
+
+//   return userConvs.map(conv => ({
+//     id: conv.id,
+//     isGroupChat: conv.isGroupChat,
+//     name: conv.name,
+//     createdAt: conv.createdAt,
+//     participants: [conv.participants], // This needs to be improved to get all participants
+//     latestMessage: conv.latestMessage ? {
+//       content: conv.latestMessage,
+//       createdAt: conv.latestMessageTime
+//     } : null
+//   }));
+// };
+
 export const getUserConversations = async (userId) => {
   const db = await getDb();
+  const cp_all = alias(conversationParticipants, 'cp_all');
+  
+  // REMOVED: The 'otherParticipantNameSubquery' constant is no longer here.
+  // We will define it directly inside the .select() clause below.
+
   const userConvs = await db
     .select({
       id: conversations.id,
       isGroupChat: conversations.isGroupChat,
-      name: conversations.name,
+      name: sql`CASE WHEN ${conversations.isGroupChat} = 1 THEN ${conversations.name} ELSE (SELECT name FROM users LEFT JOIN conversation_participants cp ON cp.user_id = users.id WHERE cp.conversation_id = ${conversations.id} AND cp.user_id != ${userId} LIMIT 1) END`.as('name'),
       createdAt: conversations.createdAt,
-      participants: conversationParticipants.userId,
-      latestMessage: messages.content,
-      latestMessageTime: messages.createdAt
+      participants: sql`GROUP_CONCAT(DISTINCT ${cp_all.userId})`.as('participants'),
+      latestMessage: sql`(SELECT content FROM messages WHERE conversation_id = ${conversations.id} ORDER BY id DESC LIMIT 1)`.as('latestMessage'),
+      latestMessageTime: sql`(SELECT created_at FROM messages WHERE conversation_id = ${conversations.id} ORDER BY id DESC LIMIT 1)`.as('latestMessageTime'),
     })
-    .from(conversationParticipants)
-    .innerJoin(conversations, eq(conversationParticipants.conversationId, conversations.id))
-    .leftJoin(messages, and(
-      eq(messages.conversationId, conversations.id),
-      eq(messages.id, db.select({ maxId: sql`MAX(${messages.id})` }).from(messages).where(eq(messages.conversationId, conversations.id)))
+    .from(conversations)
+    .innerJoin(conversationParticipants, and(
+      eq(conversationParticipants.conversationId, conversations.id),
+      eq(conversationParticipants.userId, userId)
     ))
-    .where(eq(conversationParticipants.userId, userId))
+    .leftJoin(cp_all, eq(cp_all.conversationId, conversations.id))
+    .groupBy(
+      conversations.id,
+      conversations.isGroupChat,
+      conversations.name,
+      conversations.createdAt
+    )
     .orderBy(desc(conversations.createdAt));
 
+  // Post-processing to format the data as needed
   return userConvs.map(conv => ({
     id: conv.id,
-    isGroupChat: conv.isGroupChat,
+    isGroupChat: !!conv.isGroupChat,
     name: conv.name,
     createdAt: conv.createdAt,
-    participants: [conv.participants], // This needs to be improved to get all participants
+    participants: conv.participants ? conv.participants.split(',').map(Number) : [],
     latestMessage: conv.latestMessage ? {
       content: conv.latestMessage,
       createdAt: conv.latestMessageTime
-    } : null
+    } : null,
   }));
 };
 
@@ -178,22 +226,53 @@ export const getConversationMessages = async (conversationId, limit = 50) => {
   return result.reverse(); // Return in chronological order
 };
 
+// export const createMessage = async (messageData) => {
+//   const db = await getDb();
+//   const result = await db.insert(messages).values({
+//     ...messageData,
+//     createdAt: new Date()
+//   });
+
+//   // Get the inserted ID
+//   const insertedId = result[0].insertId;
+
+//   // Return the full message object
+//   return {
+//     id: insertedId,
+//     ...messageData,
+//     createdAt: new Date().toISOString()
+//   };
+// };
+
 export const createMessage = async (messageData) => {
   const db = await getDb();
+  
+  // 1. Insert the new message
   const result = await db.insert(messages).values({
     ...messageData,
     createdAt: new Date()
   });
 
-  // Get the inserted ID
   const insertedId = result[0].insertId;
 
+  // 2. Fetch the full message with sender's details
+  const fullMessage = await db
+    .select({
+      id: messages.id,
+      conversationId: messages.conversationId,
+      senderId: messages.senderId,
+      content: messages.content,
+      createdAt: messages.createdAt,
+      senderName: users.name, // <-- ADDED
+      senderProfilePicture: users.profile_picture, // <-- ADDED
+    })
+    .from(messages)
+    .leftJoin(users, eq(messages.senderId, users.id)) // <-- ADDED JOIN
+    .where(eq(messages.id, insertedId))
+    .limit(1);
+
   // Return the full message object
-  return {
-    id: insertedId,
-    ...messageData,
-    createdAt: new Date().toISOString()
-  };
+  return fullMessage[0] || null;
 };
 
 export const isUserInConversation = async (userId, conversationId) => {

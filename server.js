@@ -48,6 +48,7 @@ io.on("connection", (socket) => {
 
     try {
       const convsData = await getUserConversations(userId);
+      console.log('Emitting conversations:', convsData);
       socket.emit("conversations", convsData);
       convsData.forEach(conv => socket.join(conv.id.toString()));
     } catch (error) {
@@ -61,6 +62,7 @@ io.on("connection", (socket) => {
       if (conv) {
         socket.join(conversationId.toString());
         const recentMessages = await getConversationMessages(conversationId, 50);
+        console.log('Emitting messageHistory:', recentMessages);
         socket.emit("messageHistory", recentMessages);
       }
     } catch (error) {
@@ -92,6 +94,7 @@ io.on("connection", (socket) => {
       };
 
       const fullMessage = await createMessage(messageData);
+      console.log('Emitting message:', fullMessage);
       io.to(convId.toString()).emit("message", fullMessage);
       callback({ success: true });
     } catch (error) {
@@ -117,11 +120,13 @@ io.on("connection", (socket) => {
         newConv.participants.forEach(pId => {
           const participantSocketId = userToSocketMap.get(pId);
           if (participantSocketId) {
+            console.log('Emitting conversationCreated to', pId, ':', newConv);
             io.to(participantSocketId).emit("conversationCreated", newConv);
           }
         });
       }
 
+      console.log('Responding to startPrivateChat:', { success: true, conversationId: convId });
       callback({ success: true, conversationId: convId });
     } catch (error) {
       console.error('Error starting private chat:', error);
@@ -142,10 +147,12 @@ io.on("connection", (socket) => {
       newConv.participants.forEach(pId => {
         const participantSocketId = userToSocketMap.get(pId);
         if (participantSocketId) {
+          console.log('Emitting conversationCreated to', pId, ':', newConv);
           io.to(participantSocketId).emit("conversationCreated", newConv);
         }
       });
 
+      console.log('Responding to createGroupChat:', { success: true, conversation: newConv });
       callback({ success: true, conversation: newConv });
     } catch (error) {
       console.error('Error creating group chat:', error);
