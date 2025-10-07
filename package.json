@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build": "node server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
