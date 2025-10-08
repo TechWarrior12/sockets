@@ -21,7 +21,7 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // Adjust for production
+    origin: "https://office.tritechnologies.net", // Adjust for production
     methods: ["GET", "POST"]
   }
 });
