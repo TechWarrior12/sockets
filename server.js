@@ -12,7 +12,7 @@ import {
   findExistingPrivateChat,
   createPrivateConversation,
   createGroupConversation
-} from './src/app/utils/db-operations.js';
+} from './utils/db-operations.js';
 
 // Load environment variables
 dotenv.config();
