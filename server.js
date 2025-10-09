@@ -42,13 +42,13 @@ io.on("connection", (socket) => {
   // --- Event Handlers ---
 
   socket.on("register", async ({ userId }) => {
-    console.log(`Registering user ${userId} to socket ${socket.id}`);
+    // console.log(`Registering user ${userId} to socket ${socket.id}`);
     userToSocketMap.set(userId, socket.id);
     socketToUserMap.set(socket.id, userId);
 
     try {
       const convsData = await getUserConversations(userId);
-      console.log('Emitting conversations:', convsData);
+      // console.log('Emitting conversations:', convsData);
       socket.emit("conversations", convsData);
       convsData.forEach(conv => socket.join(conv.id.toString()));
     } catch (error) {
@@ -62,7 +62,7 @@ io.on("connection", (socket) => {
       if (conv) {
         socket.join(conversationId.toString());
         const recentMessages = await getConversationMessages(conversationId, 50);
-        console.log('Emitting messageHistory:', recentMessages);
+        // console.log('Emitting messageHistory:', recentMessages);
         socket.emit("messageHistory", recentMessages);
       }
     } catch (error) {
@@ -94,7 +94,7 @@ io.on("connection", (socket) => {
       };
 
       const fullMessage = await createMessage(messageData);
-      console.log('Emitting message:', fullMessage);
+      // console.log('Emitting message:', fullMessage);
       io.to(convId.toString()).emit("message", fullMessage);
       callback({ success: true });
     } catch (error) {
@@ -120,13 +120,13 @@ io.on("connection", (socket) => {
         newConv.participants.forEach(pId => {
           const participantSocketId = userToSocketMap.get(pId);
           if (participantSocketId) {
-            console.log('Emitting conversationCreated to', pId, ':', newConv);
+            // console.log('Emitting conversationCreated to', pId, ':', newConv);
             io.to(participantSocketId).emit("conversationCreated", newConv);
           }
         });
       }
 
-      console.log('Responding to startPrivateChat:', { success: true, conversationId: convId });
+      // console.log('Responding to startPrivateChat:', { success: true, conversationId: convId });
       callback({ success: true, conversationId: convId });
     } catch (error) {
       console.error('Error starting private chat:', error);
@@ -147,12 +147,12 @@ io.on("connection", (socket) => {
       newConv.participants.forEach(pId => {
         const participantSocketId = userToSocketMap.get(pId);
         if (participantSocketId) {
-          console.log('Emitting conversationCreated to', pId, ':', newConv);
+          // console.log('Emitting conversationCreated to', pId, ':', newConv);
           io.to(participantSocketId).emit("conversationCreated", newConv);
         }
       });
 
-      console.log('Responding to createGroupChat:', { success: true, conversation: newConv });
+      // console.log('Responding to createGroupChat:', { success: true, conversation: newConv });
       callback({ success: true, conversation: newConv });
     } catch (error) {
       console.error('Error creating group chat:', error);
@@ -176,7 +176,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log("Socket disconnected:", socket.id);
+    // console.log("Socket disconnected:", socket.id);
     const userId = userToSocketMap.get(socket.id);
     if (userId) {
       // Notify rooms that this user has stopped typing
@@ -188,7 +188,7 @@ io.on("connection", (socket) => {
 
       userToSocketMap.delete(userId);
       socketToUserMap.delete(socket.id);
-      console.log(`User ${userId} unregistered.`);
+      // console.log(`User ${userId} unregistered.`);
     }
   });
 });
@@ -202,5 +202,5 @@ app.get('/health', (req, res) => {
 // Start server
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
+  // console.log(`Server running on port ${PORT}`);
 });
